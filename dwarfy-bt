@@ -1,0 +1,255 @@
+#!/usr/bin/python
+#
+# This file is part of 'dwarfy' project.
+#
+# The program evaluates debugging user experience.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+#
+# Author: Djordje Todorovic djolertrk@gmail.com
+
+import backtraces as bt
+import sys
+import argparse
+import os
+import shutil
+import time
+import signal
+
+def Main():
+  print ("== dwarfy ==")
+  print ("version 1.0")
+  print ("")
+  print ("")
+
+  parser = argparse.ArgumentParser()
+  parser.add_argument('--process-entry-vals',
+            action='store',
+            type=str,
+            nargs='*',
+            dest='file_bt_name',
+            default=[],
+            help='process backtrace')
+  results = parser.parse_args()
+
+  # If --process-entry-vals option is set.
+  if results.file_bt_name:
+    file_bt_name = results.file_bt_name
+
+    functions = []
+
+    # Get file size.
+    statinfo = os.stat(file_bt_name[0])
+    file_size = statinfo.st_size
+
+    handnle_program_input = raw_input ("Do you want to manually operate with programs input? (y/n) ")
+    if handnle_program_input != "y" and handnle_program_input != "n":
+      print ("Wrong input!!!")
+      sys.exit (0)
+
+    user_des = raw_input ("Do you want to specify functions for breakpoints? (y/n) ")
+    if user_des == "y":
+      func = raw_input ("Please specify function to set breakpoint on it:\n")
+      functions.append (func)
+      while 1:
+        user_des = raw_input ("More functions? (y/n) ")
+        if user_des == "n":
+          break
+        elif user_des == "y":
+          func = raw_input ("Please specify function to set breakpoint on it:\n")
+          functions.append (func)
+        else:
+          print ("Wrong input!!!")
+          sys.exit (0)
+    elif user_des == "n":
+      user_des = raw_input ("Are you sure you want to go through all functions of the program? (y/n) ")
+      if user_des == "y":
+        if handnle_program_input == "y":
+          print ("\n\nCan't use manually operating with programs input\n" +
+              "and automatically picking all functions of the program.\n\n")
+          sys.exit (0)
+
+        if file_size > 100000000:
+            print ("\n\nTest file is too large in order to\n" +
+                "grab all functions, please re-run the tool and\n" +
+                "specify functions\n" +
+                "for break points.\n\n")
+            sys.exit(0)
+
+        print ("\n\nPlease wait...\n")
+
+        # Get programs functions in order to set breakpoints on it.
+        program = "gdb " + file_bt_name[0] + " --command gdb_commands_get_funcs > gdb.txt"
+        os.system (program)
+
+        file_funcs = open('gdb.txt','r')
+        functions_from_gdb = file_funcs.readlines()
+        for line in functions_from_gdb:
+          if "All defined functions" in line:
+            continue
+          elif "File " in line:
+            continue
+          elif "Non-debugging symbols" in line:
+            break
+
+          func_name_start = line.find(' ')
+          func_name_end = line.find('(')
+
+          if func_name_start == -1 or func_name_end == -1:
+            continue
+
+          func = line [func_name_start + 1 : func_name_end]
+
+          if not func:
+            continue
+
+          # Trim types.
+          while " " in func:
+            func_name_start = func.find(' ')
+            func = func [func_name_start + 1 :]
+
+          # Trim pointer operator.
+          if func and func[0] == "*":
+            func = func[1:]
+
+          functions.append(func)
+        # Clean up tmp gdb log files.
+        os.system ('rm gdb.txt')
+      elif user_des == "n":
+        print ("Bye bye!")
+        sys.exit (0)
+      else:
+        print ("Wrong input!!!")
+        sys.exit (0)
+    else:
+      print ("Wrong input!!!")
+      sys.exit (0)
+    # Number of backtraces proccessed.
+    bt_num = 0
+
+    # Cumulative percentage of optimized out parameters.
+    cumul = 0.0
+    cumul_entry_vals = 0.0
+
+    print ("\nProcessing backtraces...\n")
+    for f in functions:
+      # Put a breakpoint on the function in gdb command file.
+      from_file = open ('gdb_commands')
+      first_command = from_file.readline()
+      first_command = "b " + f + "\n"
+      to_file = open ('gdb_commands', mode='w')
+      to_file.write (first_command)
+      shutil.copyfileobj (from_file, to_file)
+      to_file.close ()
+      from_file.close ()
+
+      # Check if a breakpoint is triggered.
+      is_triggered = 0
+      if handnle_program_input == "n":
+        # Run the program and manipulate with it.
+        args_num = len (file_bt_name)
+        if args_num > 1:
+          file_with_args = ""
+          i = 0
+          while i < args_num:
+            file_with_args += file_bt_name[i]
+            file_with_args += " "
+            i += 1
+          program = "gdb --command gdb_commands --args " + file_with_args
+        else:
+          program = "gdb " + file_bt_name[0] + " --command gdb_commands"
+        pid,fd = os.forkpty()
+        if pid == 0:
+          os.system(program)
+          sys.exit(0)
+        else:
+          output = os.read (fd, 3072)
+          os.write (fd,'ls\n')
+
+          # For large programs let's wait little bit more.
+          if file_size > 100000000:
+            print ("Please wait, running process is too large...\n")
+            time.sleep (50)
+          elif file_size > 10000000:
+            time.sleep (3)
+          else:
+            time.sleep(2)
+
+          output = os.read (fd, 3072)
+          lines = output.splitlines ()
+          for l in lines:
+            if "Breakpoint 1, " in l:
+              is_triggered = 1
+              break
+      else:
+        # Put a breakpoint on the function in gdb command file.
+        from_gdb_file = open ('gdb_commands_manipulate_input')
+        first_command_gdb_file = from_gdb_file.readline()
+        first_command_gdb_file = "b " + f + "\n"
+        to_gdb_file = open ('gdb_commands_manipulate_input', mode='w')
+        to_gdb_file.write (first_command_gdb_file)
+        shutil.copyfileobj (from_gdb_file, to_gdb_file)
+        to_gdb_file.close ()
+        from_gdb_file.close ()
+
+        # Run the program and manipulate with it.
+        args_num = len (file_bt_name)
+        if args_num > 1:
+          file_with_args = ""
+          i = 0
+          while i < args_num:
+            file_with_args += file_bt_name[i]
+            file_with_args += " "
+            i += 1
+          program = "gdb --command gdb_commands_manipulate_input --args " + file_with_args
+        else:
+          program = "gdb " + file_bt_name[0] + " --command gdb_commands_manipulate_input"
+        os.system(program)
+        file_gdb = open('gdb_tmp.log','r')
+        file_lines_gdb = file_gdb.readlines()
+        for l in file_lines_gdb:
+          if "Breakpoint 1, " in l:
+            is_triggered = 1
+            break
+
+        # Clean up tmp gdb log files.
+        os.system ('rm -f gdb_tmp.log')
+
+      # Skip those functions that are not called.
+      if is_triggered == 0:
+        continue
+
+      file_bt = open('gdb.txt','r')
+      frames_bt = file_bt.readlines()
+
+      # Process the backtrace.
+      result = bt.process_backtrace (frames_bt)
+
+      # Consider backtraces with at least one parameter.
+      if result[0] != 0:
+        cumul += result[1]
+        bt_num += 1
+        cumul_entry_vals += result[2]
+
+      file_bt.close()
+
+    # Clean up tmp gdb log files.
+    os.system ('rm -f gdb.txt')
+
+    print ("====================================")
+    report_tmp = "Num of backtraces proccessed " + str(bt_num)
+    print (report_tmp)
+    if bt_num != 0:
+      report_tmp = "<optimized out> parameters " + str(round(cumul/bt_num, 2)) + "%"
+      print (report_tmp)
+      report_tmp = "@entry values " + str(round(cumul_entry_vals/bt_num, 2)) + "%"
+      print (report_tmp)
+    print ("====================================\n")
+  else:
+    print("Please specify an option and file to investigate\n")
+    sys.exit(1)
+
+if __name__ == '__main__':
+  Main()

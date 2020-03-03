@@ -1,0 +1,6 @@
+set logging overwrite on
+set logging on
+info functions
+set logging off
+q
+y

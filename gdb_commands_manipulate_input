@@ -1,0 +1,14 @@
+b display_gdb_prompt
+set logging file gdb_tmp.log
+set logging overwrite on
+set logging on
+run
+set logging off
+set logging file gdb.txt
+set logging overwrite on
+set logging redirect on
+set logging on
+bt
+set logging off
+q
+y

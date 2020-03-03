@@ -1,0 +1,8 @@
+b main
+run
+set logging overwrite on
+set logging on
+bt
+set logging off
+q
+y
