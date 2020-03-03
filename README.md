@@ -1,6 +1,7 @@
 # dwarfy
 
 Let's evaluate debugging user experience.
+The tool automates the process of putting breakpoints and evaluating the quality of backtraces. At the moment, it supports only GDB, but I will add support for LLDB as well.
 
 ## Examples
 
