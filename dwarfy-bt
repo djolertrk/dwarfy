@@ -34,6 +34,9 @@ def Main():
             help='process backtrace')
   results = parser.parse_args()
 
+  # Get the directory of the LLVM tools.
+  gdb_cmd = "gdb"
+
   # If --process-entry-vals option is set.
   if results.file_bt_name:
     file_bt_name = results.file_bt_name
@@ -81,7 +84,8 @@ def Main():
         print ("\n\nPlease wait...\n")
 
         # Get programs functions in order to set breakpoints on it.
-        program = "gdb " + file_bt_name[0] + " --command gdb_commands_get_funcs > gdb.txt"
+        gdb_commands_get_funcs_path = os.path.join(os.path.dirname(__file__), "gdb_commands_get_funcs")
+        program = gdb_cmd + " " + file_bt_name[0] + " --command " + gdb_commands_get_funcs_path + " > gdb.txt"
         os.system (program)
 
         file_funcs = open('gdb.txt','r')
@@ -134,12 +138,13 @@ def Main():
     cumul_entry_vals = 0.0
 
     print ("\nProcessing backtraces...\n")
+    gdb_commands_path = os.path.join(os.path.dirname(__file__), "gdb_commands")
     for f in functions:
       # Put a breakpoint on the function in gdb command file.
-      from_file = open ('gdb_commands')
+      from_file = open (gdb_commands_path)
       first_command = from_file.readline()
       first_command = "b " + f + "\n"
-      to_file = open ('gdb_commands', mode='w')
+      to_file = open (gdb_commands_path, mode='w')
       to_file.write (first_command)
       shutil.copyfileobj (from_file, to_file)
       to_file.close ()
@@ -157,9 +162,9 @@ def Main():
             file_with_args += file_bt_name[i]
             file_with_args += " "
             i += 1
-          program = "gdb --command gdb_commands --args " + file_with_args
+          program = "gdb --command " + gdb_commands_path + " --args " + file_with_args
         else:
-          program = "gdb " + file_bt_name[0] + " --command gdb_commands"
+          program = "gdb " + file_bt_name[0] + " --command " + gdb_commands_path
         pid,fd = os.forkpty()
         if pid == 0:
           os.system(program)
@@ -185,10 +190,12 @@ def Main():
               break
       else:
         # Put a breakpoint on the function in gdb command file.
-        from_gdb_file = open ('gdb_commands_manipulate_input')
+        gdb_commands_manipulate_input_path = os.path.join(os.path.dirname(__file__), \
+                                                          "gdb_commands_manipulate_input")
+        from_gdb_file = open (gdb_commands_manipulate_input_path)
         first_command_gdb_file = from_gdb_file.readline()
         first_command_gdb_file = "b " + f + "\n"
-        to_gdb_file = open ('gdb_commands_manipulate_input', mode='w')
+        to_gdb_file = open (gdb_commands_manipulate_input_path, mode='w')
         to_gdb_file.write (first_command_gdb_file)
         shutil.copyfileobj (from_gdb_file, to_gdb_file)
         to_gdb_file.close ()
@@ -203,9 +210,9 @@ def Main():
             file_with_args += file_bt_name[i]
             file_with_args += " "
             i += 1
-          program = "gdb --command gdb_commands_manipulate_input --args " + file_with_args
+          program = "gdb --command " + gdb_commands_manipulate_input_path + " --args " + file_with_args
         else:
-          program = "gdb " + file_bt_name[0] + " --command gdb_commands_manipulate_input"
+          program = "gdb " + file_bt_name[0] + " --command " + gdb_commands_manipulate_input_path
         os.system(program)
         file_gdb = open('gdb_tmp.log','r')
         file_lines_gdb = file_gdb.readlines()
