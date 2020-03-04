@@ -7,7 +7,7 @@ The tool automates the process of putting breakpoints and evaluating the quality
 
 ### Process all functions of the program
 
-	dwarfy-bt --process-entry-vals ./a.out
+	dwarfy-bt --count-entry-vals ./a.out
 	== dwarfy ==
 	version 1.0
 
@@ -26,7 +26,7 @@ The tool automates the process of putting breakpoints and evaluating the quality
 
 ### Process just a function
 
-	dwarfy-bt --process-entry-vals ./a.out
+	dwarfy-bt --count-entry-vals ./a.out
 	== dwarfy ==
 	version 1.0
 

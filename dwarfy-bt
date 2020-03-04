@@ -18,6 +18,34 @@ import shutil
 import time
 import signal
 
+def parse_program_args(parser):
+  parser.add_argument('-count-entry-vals', action='store_true',
+            default=False,
+            help='count @entry values printed out'
+            )
+  parser.add_argument('-process-core-files', action='store',
+            default="",
+            dest='core_files_dest',
+            help='process core-files for a given directory'
+            )
+  parser.add_argument('file_name', action="store", default=[],
+            nargs= "*",
+            help='file to process (with its arguments)')
+  return parser.parse_args()
+
+def check_args(results):
+  if len(sys.argv) < 2:
+    print ('error: Too few arguments.')
+    return False
+  elif results.core_files_dest != "" and os.path.isdir(results.core_files_dest) == False:
+    print ('error: Please specify a directory where the core files are stored.')
+    return False
+  elif os.path.isfile(results.file_name[0]) == False:
+    print ('error: Please specify a directory where the core files are stored.')
+    return False
+
+  return True
+
 def Main():
   print ("== dwarfy ==")
   print ("version 1.0")
@@ -25,26 +53,26 @@ def Main():
   print ("")
 
   parser = argparse.ArgumentParser()
-  parser.add_argument('--process-entry-vals',
-            action='store',
-            type=str,
-            nargs='*',
-            dest='file_bt_name',
-            default=[],
-            help='process backtrace')
-  results = parser.parse_args()
+  results = parse_program_args(parser)
 
-  # Get the directory of the LLVM tools.
+  if check_args(results) == False:
+    print ('error: Invalid input\n')
+    parser.print_help()
+    sys.exit(1)
+
+  program_args = results.file_name
+  # TODO: This should be set dynamically, so it can support LLDB as well.
   gdb_cmd = "gdb"
+  functions = []
+  # Number of backtraces proccessed.
+  bt_num = 0
+  # Cumulative percentage of optimized out parameters.
+  cumul = 0.0
+  cumul_entry_vals = 0.0
 
-  # If --process-entry-vals option is set.
-  if results.file_bt_name:
-    file_bt_name = results.file_bt_name
-
-    functions = []
-
+  if results.core_files_dest == "":
     # Get file size.
-    statinfo = os.stat(file_bt_name[0])
+    statinfo = os.stat(program_args[0])
     file_size = statinfo.st_size
 
     handnle_program_input = raw_input ("Do you want to manually operate with programs input? (y/n) ")
@@ -85,7 +113,7 @@ def Main():
 
         # Get programs functions in order to set breakpoints on it.
         gdb_commands_get_funcs_path = os.path.join(os.path.dirname(__file__), "gdb_commands_get_funcs")
-        program = gdb_cmd + " " + file_bt_name[0] + " --command " + gdb_commands_get_funcs_path + " > gdb.txt"
+        program = gdb_cmd + " " + program_args[0] + " --command " + gdb_commands_get_funcs_path + " > gdb.txt"
         os.system (program)
 
         file_funcs = open('gdb.txt','r')
@@ -100,20 +128,15 @@ def Main():
 
           func_name_start = line.find(' ')
           func_name_end = line.find('(')
-
           if func_name_start == -1 or func_name_end == -1:
             continue
-
           func = line [func_name_start + 1 : func_name_end]
-
           if not func:
             continue
-
           # Trim types.
           while " " in func:
             func_name_start = func.find(' ')
             func = func [func_name_start + 1 :]
-
           # Trim pointer operator.
           if func and func[0] == "*":
             func = func[1:]
@@ -130,12 +153,6 @@ def Main():
     else:
       print ("Wrong input!!!")
       sys.exit (0)
-    # Number of backtraces proccessed.
-    bt_num = 0
-
-    # Cumulative percentage of optimized out parameters.
-    cumul = 0.0
-    cumul_entry_vals = 0.0
 
     print ("\nProcessing backtraces...\n")
     gdb_commands_path = os.path.join(os.path.dirname(__file__), "gdb_commands")
@@ -154,17 +171,17 @@ def Main():
       is_triggered = 0
       if handnle_program_input == "n":
         # Run the program and manipulate with it.
-        args_num = len (file_bt_name)
+        args_num = len (program_args)
         if args_num > 1:
           file_with_args = ""
           i = 0
           while i < args_num:
-            file_with_args += file_bt_name[i]
+            file_with_args += program_args[i]
             file_with_args += " "
             i += 1
           program = "gdb --command " + gdb_commands_path + " --args " + file_with_args
         else:
-          program = "gdb " + file_bt_name[0] + " --command " + gdb_commands_path
+          program = "gdb " + program_args[0] + " --command " + gdb_commands_path
         pid,fd = os.forkpty()
         if pid == 0:
           os.system(program)
@@ -202,17 +219,17 @@ def Main():
         from_gdb_file.close ()
 
         # Run the program and manipulate with it.
-        args_num = len (file_bt_name)
+        args_num = len (program_args)
         if args_num > 1:
           file_with_args = ""
           i = 0
           while i < args_num:
-            file_with_args += file_bt_name[i]
+            file_with_args += program_args[i]
             file_with_args += " "
             i += 1
           program = "gdb --command " + gdb_commands_manipulate_input_path + " --args " + file_with_args
         else:
-          program = "gdb " + file_bt_name[0] + " --command " + gdb_commands_manipulate_input_path
+          program = "gdb " + program_args[0] + " --command " + gdb_commands_manipulate_input_path
         os.system(program)
         file_gdb = open('gdb_tmp.log','r')
         file_lines_gdb = file_gdb.readlines()
@@ -238,25 +255,64 @@ def Main():
       if result[0] != 0:
         cumul += result[1]
         bt_num += 1
-        cumul_entry_vals += result[2]
+        if results.count_entry_vals:
+          cumul_entry_vals += result[2]
+
+      file_bt.close()
+  else:
+    core_files = []
+    core_files_dest = results.core_files_dest
+
+    # Get the core files. To avoid some further analysis we assume the core files
+    # are files named as 'core*'.
+    for i in os.listdir(core_files_dest):
+      if os.path.isfile(os.path.join(core_files_dest,i)) and 'core' in i:
+        core_files.append(os.path.join(core_files_dest,i))
+
+    for i in core_files:
+      gdb_commands_core_files = os.path.join(os.path.dirname(__file__), \
+                                             "gdb_core_file_commands")
+      from_file = open (gdb_commands_core_files)
+      first_command = from_file.readline()
+      first_command = "core-file " + i + "\n"
+      to_file = open (gdb_commands_core_files, mode='w')
+      to_file.write (first_command)
+      shutil.copyfileobj (from_file, to_file)
+      to_file.close ()
+      from_file.close ()
+
+      program = "gdb " + program_args[0] + " --command " + gdb_commands_core_files
+      os.system(program)
+
+      file_bt = open('gdb.txt','r')
+      frames_bt = file_bt.readlines()
+
+      # Process the backtrace.
+      result = bt.process_backtrace (frames_bt)
+
+      # Consider backtraces with at least one parameter.
+      if result[0] != 0:
+        cumul += result[1]
+        bt_num += 1
+        if results.count_entry_vals:
+          cumul_entry_vals += result[2]
 
       file_bt.close()
 
-    # Clean up tmp gdb log files.
-    os.system ('rm -f gdb.txt')
+  # Clean up tmp gdb log files.
+  os.system ('rm -f gdb.txt')
 
-    print ("====================================")
-    report_tmp = "Num of backtraces proccessed " + str(bt_num)
+  # Print the report.
+  print ("====================================")
+  report_tmp = "Num of backtraces proccessed " + str(bt_num)
+  print (report_tmp)
+  if bt_num != 0:
+    report_tmp = "<optimized out> parameters " + str(round(cumul/bt_num, 2)) + "%"
     print (report_tmp)
-    if bt_num != 0:
-      report_tmp = "<optimized out> parameters " + str(round(cumul/bt_num, 2)) + "%"
-      print (report_tmp)
+    if results.count_entry_vals:
       report_tmp = "@entry values " + str(round(cumul_entry_vals/bt_num, 2)) + "%"
       print (report_tmp)
-    print ("====================================\n")
-  else:
-    print("Please specify an option and file to investigate\n")
-    sys.exit(1)
+  print ("====================================\n")
 
 if __name__ == '__main__':
   Main()

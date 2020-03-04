@@ -1,2 +1,2 @@
-- Add support for corefiles
+- REFACTOR THE CODE
 - Add support for parsing backtraces from LLDB

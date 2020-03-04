@@ -1,0 +1,7 @@
+core-file /nobackup/djtodoro/llvm_trunk/NEW/build_debug/test/CodeGen/X86/core.10504
+set logging overwrite on
+set logging on
+bt 20
+set logging off
+q
+y
