@@ -44,9 +44,9 @@ The tool automates the process of putting breakpoints and evaluating the quality
 	====================================
 
 ### Process core-files
-        dwarfy-bt -process-core-files /home/testing/ /home/testing/a.out
-        == dwarfy ==
-        version 1.0
+	dwarfy-bt -process-core-files /home/testing/ /home/testing/a.out
+	== dwarfy ==
+	version 1.0
 	====================================
 	Num of backtraces proccessed 1
 	<optimized out> parameters 0.0%
