@@ -7,7 +7,7 @@ The tool automates the process of putting breakpoints and evaluating the quality
 
 ### Process all functions of the program
 
-	dwarfy-bt --count-entry-vals ./a.out
+	dwarfy-bt -count-entry-vals ./a.out
 	== dwarfy ==
 	version 1.0
 
@@ -26,7 +26,7 @@ The tool automates the process of putting breakpoints and evaluating the quality
 
 ### Process just a function
 
-	dwarfy-bt --count-entry-vals ./a.out
+	dwarfy-bt -count-entry-vals ./a.out
 	== dwarfy ==
 	version 1.0
 
@@ -41,4 +41,13 @@ The tool automates the process of putting breakpoints and evaluating the quality
 	Num of backtraces proccessed 1
 	<optimized out> parameters 33.33%
 	@entry values 0.0%
+	====================================
+
+### Process core-files
+        dwarfy-bt -process-core-files /home/testing/ /home/testing/a.out
+        == dwarfy ==
+        version 1.0
+	====================================
+	Num of backtraces proccessed 1
+	<optimized out> parameters 0.0%
 	====================================
