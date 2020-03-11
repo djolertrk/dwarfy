@@ -18,6 +18,8 @@ def process_backtrace(frames_bt):
   num_params = 0
   i = 0
   frames_len = len (frames_bt)
+  opt_entry_num = 0
+  par_eq_entry = 0
   while i < frames_len:
     f = frames_bt[i]
     full_call_frame = ""
@@ -58,6 +60,9 @@ def process_backtrace(frames_bt):
     if first_param == -1 or last_param == -1:
       continue
 
+    opt_var = ""
+    entr_var = ""
+
     params = full_call_frame[first_param+1:last_param]
     params_list = params.split(", ")
     for p in params_list:
@@ -73,22 +78,24 @@ def process_backtrace(frames_bt):
         value = value[2]
         entry_value = value
         num_entry_values_bt += 1
+        par_eq_entry += 1
       elif var.find("@entry") != -1:
         var.partition("=")
         entry_value = var[2]
         num_entry_values_bt += 1
+        entr_var = var.partition("@")[0]
+        if entr_var == opt_var:
+          opt_entry_num += 1
 
       if value == "<optimized out>":
         optimized_out_bt += 1
+        opt_var = var
 
   result = []
   result.append (num_params)
-  optimized_out_bt_p = 0.0
-  num_entry_values_bt_p = 0.0
-  if num_params > 0:
-    optimized_out_bt_p = (float(optimized_out_bt)/num_params) * 100;
-    num_entry_values_bt_p = (float(num_entry_values_bt)/num_params) * 100;
-  result.append (optimized_out_bt_p)
-  result.append (num_entry_values_bt_p)
+  result.append (optimized_out_bt)
+  result.append (num_entry_values_bt)
+  result.append (opt_entry_num)
+  result.append (par_eq_entry)
 
   return result

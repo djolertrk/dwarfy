@@ -17,6 +17,7 @@ import os
 import shutil
 import time
 import signal
+import subprocess
 
 def parse_program_args(parser):
   parser.add_argument('-count-entry-vals', action='store_true',
@@ -27,6 +28,11 @@ def parse_program_args(parser):
             default="",
             dest='core_files_dest',
             help='process core-files for a given directory'
+            )
+  parser.add_argument('-debugger', action='store',
+            default="",
+            dest='debugger_binary',
+            help='manually set which debugger to use (GDB only supported)'
             )
   parser.add_argument('file_name', action="store", default=[],
             nargs= "*",
@@ -43,6 +49,31 @@ def check_args(results):
   elif os.path.isfile(results.file_name[0]) == False:
     print ('error: Please specify a directory where the core files are stored.')
     return False
+
+  return True
+
+def check_debugger_version(db_path):
+  which = "which " + db_path
+  cmd1 = subprocess.Popen(which, shell = True, stdout = subprocess.PIPE)
+  for line1 in cmd1.stdout:
+    full_path = line1.rstrip()
+
+  if os.path.isfile(full_path) == False:
+    print('error: Please specify a valid debugger binary.')
+    return False
+
+  ver_check = full_path + " --version"
+  cmd2 = subprocess.Popen(ver_check, shell = True, stdout = subprocess.PIPE)
+  for line2 in cmd2.stdout:
+    #GNU gdb (*) VERSION
+    if "GNU gdb" in line2:
+      arr = line2.split(")")
+      print ("Debugger version GDB" + arr[1])
+      ciph = arr[1].split(".")
+      if int(ciph[0]) < 8:
+        if int(ciph[0]) < 7 or int(ciph[1]) < 8:
+          print('error: Installed gdb is too old. Please use version 7.8 or newer.')
+          return False
 
   return True
 
@@ -63,12 +94,23 @@ def Main():
   program_args = results.file_name
   # TODO: This should be set dynamically, so it can support LLDB as well.
   gdb_cmd = "gdb"
+  if results.debugger_binary != "":
+    gdb_cmd = results.debugger_binary
+  if check_debugger_version(gdb_cmd) == False:
+    sys.exit(1)
+
   functions = []
   # Number of backtraces proccessed.
   bt_num = 0
   # Cumulative percentage of optimized out parameters.
   cumul = 0.0
   cumul_entry_vals = 0.0
+  # Total number of processed parameters
+  par_num = 0
+  # Number of optimized out parameters which have @entry values
+  opt_entry_num = 0
+  # Number of params with @entry value already available
+  par_eq_entry = 0
 
   if results.core_files_dest == "":
     # Get file size.
@@ -179,9 +221,9 @@ def Main():
             file_with_args += program_args[i]
             file_with_args += " "
             i += 1
-          program = "gdb --command " + gdb_commands_path + " --args " + file_with_args
+          program = gdb_cmd + " --command " + gdb_commands_path + " --args " + file_with_args
         else:
-          program = "gdb " + program_args[0] + " --command " + gdb_commands_path
+          program = gdb_cmd + " " + program_args[0] + " --command " + gdb_commands_path
         pid,fd = os.forkpty()
         if pid == 0:
           os.system(program)
@@ -227,9 +269,9 @@ def Main():
             file_with_args += program_args[i]
             file_with_args += " "
             i += 1
-          program = "gdb --command " + gdb_commands_manipulate_input_path + " --args " + file_with_args
+          program = gdb_cmd + " --command " + gdb_commands_manipulate_input_path + " --args " + file_with_args
         else:
-          program = "gdb " + program_args[0] + " --command " + gdb_commands_manipulate_input_path
+          program = gdb_cmd + " " + program_args[0] + " --command " + gdb_commands_manipulate_input_path
         os.system(program)
         file_gdb = open('gdb_tmp.log','r')
         file_lines_gdb = file_gdb.readlines()
@@ -255,8 +297,11 @@ def Main():
       if result[0] != 0:
         cumul += result[1]
         bt_num += 1
+        par_num += result[0]
         if results.count_entry_vals:
           cumul_entry_vals += result[2]
+          opt_entry_num += result[3]
+          par_eq_entry += result[4]
 
       file_bt.close()
   else:
@@ -281,7 +326,7 @@ def Main():
       to_file.close ()
       from_file.close ()
 
-      program = "gdb " + program_args[0] + " --command " + gdb_commands_core_files
+      program = gdb_cmd + " " + program_args[0] + " --command " + gdb_commands_core_files
       os.system(program)
 
       file_bt = open('gdb.txt','r')
@@ -294,8 +339,11 @@ def Main():
       if result[0] != 0:
         cumul += result[1]
         bt_num += 1
+        par_num += 1
         if results.count_entry_vals:
           cumul_entry_vals += result[2]
+          opt_entry_num += result[3]
+          par_eq_entry += result[4]
 
       file_bt.close()
 
@@ -303,16 +351,26 @@ def Main():
   os.system ('rm -f gdb.txt')
 
   # Print the report.
-  print ("====================================")
-  report_tmp = "Num of backtraces proccessed " + str(bt_num)
+  print ("=====================================================")
+  report_tmp = "Num of backtraces proccessed " + str(bt_num) + "\n"
   print (report_tmp)
   if bt_num != 0:
-    report_tmp = "<optimized out> parameters " + str(round(cumul/bt_num, 2)) + "%"
+    report_tmp = "Total number of parameters: " + str(par_num)
+    print (report_tmp)
+    report_tmp = "<optimized out> parameters " + str(round(float(cumul)/par_num * 100, 2)) + "%"
     print (report_tmp)
     if results.count_entry_vals:
-      report_tmp = "@entry values " + str(round(cumul_entry_vals/bt_num, 2)) + "%"
+      report_tmp = "@entry values " + str(round(float(cumul_entry_vals)/par_num * 100, 2)) + "%"
       print (report_tmp)
-  print ("====================================\n")
+      report_tmp = "no <optimized out> params!"
+      if cumul > 0.0:
+        report_tmp = "<optimized out> params with @entry value: " + str(round(float(opt_entry_num)/cumul * 100, 2)) + "%"
+      print (report_tmp)
+      report_tmp = "no params with @entry value!"
+      if cumul_entry_vals > 0.0:
+        report_tmp = "already available parms with @entry value: " + str(round(float(par_eq_entry)/par_num * 100, 2)) + "%"
+      print (report_tmp)
+  print ("=====================================================\n")
 
 if __name__ == '__main__':
   Main()
